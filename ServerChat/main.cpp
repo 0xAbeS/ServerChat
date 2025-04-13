@@ -26,13 +26,13 @@ using namespace std;
 
 
 template<typename... Args>
-void okay(const string& msg, Args&&... args) { cout << GREEN << "[+] " << format(msg, forward<Args>(args)...) << RESET << '\n'; }
+int okay(const string& msg, Args&&... args) { cout << GREEN << "[+] " << format(msg, forward<Args>(args)...) << RESET << '\n'; return 0; }
 
 template<typename... Args>
 void info(const string& msg, Args&&... args) { cout << BLUE << "[*] " << format(msg, forward<Args>(args)...) << RESET << '\n'; }
 
 template<typename... Args>
-void warn(const string& msg, Args&&... args) { cout << RED << "[-] " << format(msg, forward<Args>(args)...) << RESET << '\n'; }
+int warn(const string& msg, Args&&... args) { cout << RED << "[-] " << format(msg, forward<Args>(args)...) << RESET << '\n'; return 1; }
 
 template<typename... Args>
 void msg(const string& msg, Args&&... args) { cout << YELLOW << "[#] " << format(msg, forward<Args>(args)...) << RESET << '\n'; }
@@ -42,9 +42,8 @@ int main()
 {
 	WSADATA wsaData;
 	SOCKET serverSock = INVALID_SOCKET;
-	sockaddr_in serverAddr;
-	const char* IP = "127.0.0.1"; // or server address
-	const int PORT = 2000;
+	struct addrinfo *result = NULL, *ptr = NULL, hints;
+	const char* IP = "127.0.0.1", * PORT = "2000"; // or server address
 
 	sockaddr_in hint;
 
@@ -52,32 +51,40 @@ int main()
 
 	// Initalize Winsock
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != 0) {
-		warn("WSAStartup failed! Result: ", iResult);
-		return 1;
-	}
+	if (iResult != 0)
+		return warn("WSAStartup failed! Result: ", iResult);
+
 
 	okay("WSAStartup successfull!");
 
-	// Create a socket
-	
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
+
+	// Resolve server address and port
+	iResult = getaddrinfo(NULL, PORT, &hints, &result);
+
+	if ( iResult != 0)
+		return warn("Getaddrinfo failed. WSAError: {0}", WSAGetLastError());
+
+
+	serverSock = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+
 	if (serverSock == INVALID_SOCKET)
-	{
-		warn("WSAError: {0}", WSAGetLastError());
+		return warn("Error at soocket(). WSAError: {0}", WSAGetLastError());
+
+	// Setup the listening socket
+	iResult = bind(serverSock, result->ai_addr, (int)result->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		warn("bind failed with error: {0}", WSAGetLastError());
+		freeaddrinfo(result);
+		closesocket(serverSock);
+		WSACleanup();
 		return 1;
 	}
 
-
-	// Bind the socket to an ip address and port
-	sockaddr_in* result = NULL,
-		* ptr = NULL,
-		hints;
-
-	ZeroMemory(&hints, sizeof(hints));
-	hints.sin_family = AF_UNSPEC;
-	hints.sin_port = htons(PORT);
-	hints = IPPROTO_TCP;
-	// Tell Winsock the socket is for listening
 
 	// Wait for a connection
 
